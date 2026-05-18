@@ -13,6 +13,12 @@ class GroupedRayCasterCfg(RayCastSensorCfg):
 
     class_type: type = GroupedRayCaster
 
+    pattern_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Pattern origin offset in frame-local coordinates."""
+
+    exclude_parent_subtree: bool = False
+    """Exclude the entire parent-body subtree from ray intersections."""
+
     min_distance: float = 0.0
     """The minimum distance from the sensor to ray cast to. aka ignore the hits closer than this distance."""
 

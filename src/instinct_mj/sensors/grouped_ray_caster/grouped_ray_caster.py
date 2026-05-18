@@ -41,6 +41,8 @@ class GroupedRayCaster(RayCastSensor):
         self._needs_filter_continue = False
         self._mesh_filter_enabled: bool = False
         self._allowed_geom_lut: torch.Tensor | None = None
+        self._exclude_parent_subtree_enabled: bool = False
+        self._excluded_geom_lut: torch.Tensor | None = None
         self._active_hop_capacity = 0
         self._active_hop_pnt = torch.empty(0, 0, 3)
         self._active_hop_vec = torch.empty(0, 0, 3)
@@ -83,6 +85,8 @@ class GroupedRayCaster(RayCastSensor):
         self.drift = torch.zeros(self._num_envs, 3, device=device, dtype=torch.float32)
 
         self.ray_starts = self._local_offsets.unsqueeze(0).repeat(self._num_envs, 1, 1).clone()
+        pattern_offset = torch.tensor(self.cfg.pattern_offset, device=device, dtype=self.ray_starts.dtype)
+        self.ray_starts += pattern_offset.view(1, 1, 3)
         self.ray_directions = self._local_directions.unsqueeze(0).repeat(self._num_envs, 1, 1).clone()
         ray_bodyexclude_torch = wp.to_torch(self._ray_bodyexclude)
         if ray_bodyexclude_torch.numel() > 0:
@@ -90,7 +94,10 @@ class GroupedRayCaster(RayCastSensor):
         else:
             self._ray_bodyexclude_value = -1
         self._initialize_mesh_path_filter(mj_model, device)
-        self._needs_filter_continue = self._mesh_filter_enabled or self._min_distance > 0.0
+        self._initialize_parent_subtree_exclusion(mj_model, device)
+        self._needs_filter_continue = (
+            self._mesh_filter_enabled or self._min_distance > 0.0 or self._exclude_parent_subtree_enabled
+        )
 
     @property
     def raycast_data(self) -> RayCastData:
@@ -235,6 +242,52 @@ class GroupedRayCaster(RayCastSensor):
         self._allowed_geom_lut = allowed_geom_lut
         self._mesh_filter_enabled = True
 
+    def _initialize_parent_subtree_exclusion(self, mj_model, device: str) -> None:
+        self._exclude_parent_subtree_enabled = False
+        self._excluded_geom_lut = None
+        if not self.cfg.exclude_parent_subtree:
+            return
+
+        metadata = self._require_attachment_frame_metadata()
+        parent_body_id = int(metadata.body_id)
+        subtree_root_body_id = parent_body_id
+        frames = self.cfg.frame
+        frame = frames if isinstance(frames, ObjRef) else frames[0]
+        frame_entity = str(frame.entity or "").strip()
+        entity_prefix = f"{frame_entity}/" if frame_entity else ""
+
+        if entity_prefix:
+            current = parent_body_id
+            while True:
+                next_parent = int(mj_model.body_parentid[current])
+                if next_parent < 0 or next_parent == current:
+                    break
+                parent_name = mj_model.body(next_parent).name or ""
+                if not parent_name.startswith(entity_prefix):
+                    break
+                subtree_root_body_id = next_parent
+                current = next_parent
+
+        subtree_bodies: set[int] = set()
+        for body_id in range(int(mj_model.nbody)):
+            current = body_id
+            while True:
+                if current == subtree_root_body_id:
+                    subtree_bodies.add(body_id)
+                    break
+                next_parent = int(mj_model.body_parentid[current])
+                if next_parent < 0 or next_parent == current:
+                    break
+                current = next_parent
+
+        excluded = torch.zeros(int(mj_model.ngeom), device=device, dtype=torch.bool)
+        if len(subtree_bodies) > 0:
+            geom_body_ids = torch.tensor(mj_model.geom_bodyid[: int(mj_model.ngeom)], device=device, dtype=torch.long)
+            subtree_body_ids = torch.tensor(sorted(subtree_bodies), device=device, dtype=torch.long)
+            excluded = torch.isin(geom_body_ids, subtree_body_ids)
+        self._excluded_geom_lut = excluded
+        self._exclude_parent_subtree_enabled = True
+
     def _apply_hit_filter_and_continue(self) -> None:
         geom_ids = self._read_backend_hit_geom_ids().to(dtype=torch.long)
         distances, hit_pos_w, normals_w = self._get_mutable_raycast_outputs()
@@ -248,7 +301,12 @@ class GroupedRayCaster(RayCastSensor):
         else:
             allowed_mask = torch.ones_like(hit_mask)
 
-        reject_mask = hit_mask & ((~allowed_mask) | (distances <= self._min_distance))
+        exclude_subtree_mask = torch.zeros_like(hit_mask)
+        if self._exclude_parent_subtree_enabled:
+            assert self._excluded_geom_lut is not None
+            exclude_subtree_mask[hit_mask] = self._excluded_geom_lut[geom_ids[hit_mask]]
+
+        reject_mask = hit_mask & ((~allowed_mask) | (distances <= self._min_distance) | exclude_subtree_mask)
         if not torch.any(reject_mask):
             return
 
@@ -299,12 +357,17 @@ class GroupedRayCaster(RayCastSensor):
             else:
                 active_allowed = active_hit
 
+            active_excluded = torch.zeros_like(active_hit)
+            if self._exclude_parent_subtree_enabled:
+                assert self._excluded_geom_lut is not None
+                active_excluded[active_hit] = self._excluded_geom_lut[active_geom_ids[active_hit]]
+
             active_origins = current_origins[active_env_ids, active_ray_ids]
             active_dirs = world_rays[active_env_ids, active_ray_ids]
             active_hit_pos = active_origins + active_dirs * active_distances.unsqueeze(-1)
             active_total_distances = traveled[active_env_ids, active_ray_ids] + active_distances
 
-            active_accept = active_hit & active_allowed & (active_total_distances > self._min_distance)
+            active_accept = active_hit & active_allowed & (~active_excluded) & (active_total_distances > self._min_distance)
             if torch.any(active_accept):
                 accept_env_ids = active_env_ids[active_accept]
                 accept_ray_ids = active_ray_ids[active_accept]

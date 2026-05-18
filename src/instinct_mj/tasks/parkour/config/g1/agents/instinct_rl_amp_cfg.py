@@ -31,6 +31,24 @@ class EncoderConfigs:
 
 
 @dataclass(kw_only=True)
+class HeightScanEncoderConv2dCfg(InstinctRlConv2dHeadCfg):
+    output_size: int = 128
+    channels: list = field(default_factory=lambda: [4])
+    kernel_sizes: list = field(default_factory=lambda: [3])
+    strides: list = field(default_factory=lambda: [1])
+    hidden_sizes: list = field(default_factory=lambda: [256, 256])
+    paddings: list = field(default_factory=lambda: [1])
+    nonlinearity: str = "ReLU"
+    use_maxpool: bool = True
+    component_names: list = field(default_factory=lambda: ["height_scan"])
+
+
+@dataclass(kw_only=True)
+class HeightScanEncoderConfigs:
+    height_scan_encoder: object = field(default_factory=lambda: HeightScanEncoderConv2dCfg())
+
+
+@dataclass(kw_only=True)
 class MoEPolicyCfg(InstinctRlEncoderMoEActorCriticCfg):
     init_noise_std: float = 1.0
     num_moe_experts: int = 4
@@ -39,6 +57,12 @@ class MoEPolicyCfg(InstinctRlEncoderMoEActorCriticCfg):
     activation: str = "elu"
     encoder_configs: object = field(default_factory=lambda: EncoderConfigs())
     critic_encoder_configs: object = field(default_factory=lambda: EncoderConfigs())
+
+
+@dataclass(kw_only=True)
+class HeightScanMoEPolicyCfg(MoEPolicyCfg):
+    encoder_configs: object = field(default_factory=lambda: HeightScanEncoderConfigs())
+    critic_encoder_configs: object = field(default_factory=lambda: HeightScanEncoderConfigs())
 
 
 @dataclass(kw_only=True)
@@ -90,3 +114,9 @@ class G1ParkourPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
     empirical_normalization: bool = False
     policy: object = field(default_factory=lambda: MoEPolicyCfg())
     algorithm: object = field(default_factory=lambda: AmpAlgoCfg())
+
+
+@dataclass(kw_only=True)
+class G1ParkourHeightScanPPORunnerCfg(G1ParkourPPORunnerCfg):
+    experiment_name: str = "g1_parkour_heightscan"
+    policy: object = field(default_factory=lambda: HeightScanMoEPolicyCfg())

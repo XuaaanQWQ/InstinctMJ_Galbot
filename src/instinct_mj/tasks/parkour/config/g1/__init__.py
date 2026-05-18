@@ -7,8 +7,11 @@
 
 from instinct_mj.tasks.registry import register_instinct_task
 
-from .agents.instinct_rl_amp_cfg import G1ParkourPPORunnerCfg
-from .g1_parkour_target_amp_cfg import instinct_g1_parkour_amp_final_cfg
+from .agents.instinct_rl_amp_cfg import G1ParkourHeightScanPPORunnerCfg, G1ParkourPPORunnerCfg
+from .g1_parkour_target_amp_cfg import (
+    instinct_g1_parkour_amp_final_cfg,
+    instinct_g1_parkour_amp_velocity_heightscan_cfg,
+)
 
 register_instinct_task(
     task_id="Instinct-Parkour-Target-Amp-G1-v0",
@@ -23,4 +26,11 @@ register_instinct_task(
     env_cfg_factory=lambda: instinct_g1_parkour_amp_final_cfg(play=True, shoe=True),
     play_env_cfg_factory=lambda: instinct_g1_parkour_amp_final_cfg(play=True, shoe=True),
     instinct_rl_cfg_factory=G1ParkourPPORunnerCfg,
+)
+
+register_instinct_task(
+    task_id="Instinct-Parkour-Velocity-Amp-Heightscan-G1-v0",
+    env_cfg_factory=lambda: instinct_g1_parkour_amp_velocity_heightscan_cfg(play=False, shoe=True),
+    play_env_cfg_factory=lambda: instinct_g1_parkour_amp_velocity_heightscan_cfg(play=True, shoe=True),
+    instinct_rl_cfg_factory=G1ParkourHeightScanPPORunnerCfg,
 )

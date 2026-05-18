@@ -33,11 +33,13 @@ from mjlab.sensor import (
     RayCastSensorCfg,
 )
 from mjlab.tasks.tracking.config.g1.env_cfgs import unitree_g1_flat_tracking_env_cfg
+from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.utils.noise import UniformNoiseCfg
 from mjlab.viewer.viewer_config import ViewerConfig
 
 import instinct_mj.envs.mdp as instinct_envs_mdp
 import instinct_mj.tasks.parkour.mdp as parkour_mdp
+import instinct_mj.tasks.locomotion.mdp as locomotion_mdp
 from instinct_mj.assets.unitree_g1 import (
     G1_MJCF_PATH,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
@@ -48,6 +50,7 @@ from instinct_mj.assets.unitree_g1 import (
 from instinct_mj.motion_reference import MotionReferenceManagerCfg
 from instinct_mj.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinct_mj.motion_reference.utils import motion_interpolate_bilinear
+from instinct_mj.sensors.grouped_ray_caster import GroupedRayCasterCfg
 from instinct_mj.sensors.noisy_camera import NoisyGroupedRayCasterCameraCfg
 from instinct_mj.sensors.volume_points import Grid3dPointsGeneratorCfg, VolumePointsCfg
 from instinct_mj.tasks.mdp import (
@@ -128,6 +131,30 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     motion_buffers={"run_walk": AmassMotionCfg()},
     mp_split_method="Even",
 )
+
+
+def make_height_scanner_sensor(
+    size: tuple[float, float] = (4.0, 4.0),
+    resolution: float = 0.1,
+    offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    max_distance: float = 30.0,
+    debug_vis: bool = False,
+) -> GroupedRayCasterCfg:
+    return GroupedRayCasterCfg(
+        name="height_scanner",
+        frame=ObjRef(type="body", name="torso_link", entity="robot"),
+        ray_alignment="yaw",
+        pattern=GridPatternCfg(resolution=resolution, size=size),
+        pattern_offset=offset,
+        include_geom_groups=(0, 2),
+        exclude_parent_body=True,
+        # Exclude the whole robot subtree mounted at torso_link.
+        exclude_parent_subtree=True,
+        mesh_filter_max_hops=1,
+        min_distance=0.0,
+        max_distance=max_distance,
+        debug_vis=debug_vis,
+    )
 # ---------------------------------------------------------------------------
 # Shoe spec factory
 # ---------------------------------------------------------------------------
@@ -958,5 +985,65 @@ def instinct_g1_parkour_amp_final_cfg(
         cfg.viewer.origin_type = ViewerConfig.OriginType.WORLD
         cfg.viewer.entity_name = None
         cfg.viewer.body_name = None
+
+    return cfg
+
+
+def instinct_g1_parkour_amp_velocity_heightscan_cfg(
+    *,
+    play: bool = False,
+    shoe: bool = True,
+) -> ManagerBasedRlEnvCfg:
+    cfg = instinct_g1_parkour_amp_final_cfg(play=play, shoe=shoe)
+
+    height_scan_size = (3.0, 1.5)
+    height_scan_resolution = 0.05
+    height_scan_offset = (0.75, 0.0, 1.2)
+    height_scan_max_distance = 30.0
+    height_scanner_cfg = make_height_scanner_sensor(
+        size=height_scan_size,
+        resolution=height_scan_resolution,
+        offset=height_scan_offset,
+        max_distance=height_scan_max_distance,
+        debug_vis=play,
+    )
+    cfg.scene.sensors = tuple(sensor_cfg for sensor_cfg in cfg.scene.sensors if sensor_cfg.name != "camera") + (
+        height_scanner_cfg,
+    )
+
+    cfg.commands["base_velocity"] = UniformVelocityCommandCfg(
+        entity_name="robot",
+        resampling_time_range=(8.0, 12.0),
+        debug_vis=play,
+        heading_command=True,
+        rel_heading_envs=1.0,
+        heading_control_stiffness=0.5,
+        rel_standing_envs=0.05,
+        ranges=UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(0.45, 1.0),
+            lin_vel_y=(0.0, 0.0),
+            ang_vel_z=(-1.0, 1.0),
+            heading=(-math.pi, math.pi),
+        ),
+    )
+
+    height_scan_term = ObservationTermCfg(
+        func=instinct_envs_mdp.height_scan_image,
+        params={
+            "sensor_name": "height_scanner",
+            "size": height_scan_size,
+            "resolution": height_scan_resolution,
+        },
+        clip=(-20.0, 20.0),
+        noise=None,
+    )
+    cfg.observations["policy"].terms.pop("depth_image", None)
+    cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(height_scan_term)
+    cfg.observations["critic"].terms.pop("depth_image", None)
+    cfg.observations["critic"].terms["height_scan"] = copy.deepcopy(height_scan_term)
+
+    cfg.curriculum["terrain_levels"] = CurriculumTermCfg(
+        func=locomotion_mdp.terrain_levels_vel,
+    )
 
     return cfg

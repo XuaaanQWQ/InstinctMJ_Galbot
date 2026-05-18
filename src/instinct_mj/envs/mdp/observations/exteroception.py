@@ -110,6 +110,44 @@ def visualizable_image(
     return images
 
 
+def height_scan_image(
+    env: ManagerBasedEnv,
+    sensor_name: str,
+    size: tuple[float, float],
+    resolution: float,
+    offset: float = 0.0,
+    miss_value: float | None = None,
+) -> torch.Tensor:
+    """Raycast height scan in CNN-friendly BCHW layout."""
+    sensor = env.scene[sensor_name]
+    data = sensor.data
+    if miss_value is None:
+        miss_value = sensor.cfg.max_distance
+
+    frame_pos_w = getattr(data, "frame_pos_w", data.pos_w)
+    if frame_pos_w.dim() == 2:
+        heights = frame_pos_w[:, 2].unsqueeze(1) - data.hit_pos_w[..., 2] - offset
+    else:
+        num_envs = data.distances.shape[0]
+        num_frames = frame_pos_w.shape[1]
+        num_rays_per_frame = data.distances.numel() // (num_envs * num_frames)
+        frame_z = frame_pos_w[:, :, 2:3]
+        hit_z = data.hit_pos_w[..., 2].view(num_envs, num_frames, num_rays_per_frame)
+        heights = (frame_z - hit_z - offset).view(num_envs, num_frames * num_rays_per_frame)
+    scan = torch.where(data.distances < 0, torch.full_like(heights, miss_value), heights)
+
+    size_x, size_y = size
+    grid_x = int(round(size_x / resolution)) + 1
+    grid_y = int(round(size_y / resolution)) + 1
+    expected_num_rays = grid_x * grid_y
+    if scan.shape[-1] != expected_num_rays:
+        raise ValueError(
+            f"Unexpected ray count for {sensor_name}: got {scan.shape[-1]}, "
+            f"expected {expected_num_rays} from size={size}, resolution={resolution}."
+        )
+    return scan.view(scan.shape[0], 1, grid_y, grid_x).contiguous()
+
+
 class delayed_visualizable_image(ManagerTermBase):
     """A callable class that could sample delayed images from camera sensor that has history data. This is initially
     designed to use NoisyGroupedRayCasterCamera. The output shape will always be (N, num_output_frames, H, W) for now.
