@@ -12,7 +12,7 @@ from mjlab.utils.lab_api.math import quat_apply_inverse as quat_rotate_inverse
 from mjlab.utils.lab_api.math import wrap_to_pi, yaw_quat
 
 from instinct_mj.managers import CommandTerm
-from instinct_mj.terrains import TerrainImporter
+from instinct_mj.terrains.terrain_importer import TerrainImporter
 
 if TYPE_CHECKING:
     from mjlab.entity import Entity
