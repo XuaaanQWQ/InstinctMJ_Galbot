@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
+import os
+from pathlib import Path
 
 import torch
 from mjlab.envs import ManagerBasedRlEnv
@@ -14,6 +17,20 @@ from prettytable import PrettyTable
 from instinct_mj.envs.scene import InstinctScene
 from instinct_mj.managers import MultiRewardCfg, MultiRewardManager
 from instinct_mj.monitors import MonitorManager
+
+
+def _log_rank_stage(stage: str) -> None:
+    rank = os.environ.get("RANK", "0")
+    world_size = os.environ.get("WORLD_SIZE", "1")
+    message = f"[INFO rank {rank}/{world_size}] env: {stage}"
+    print(message, flush=True)
+    rank_log_dir = os.environ.get("INSTINCT_RANK_LOG_DIR")
+    if rank_log_dir is None:
+        return
+    path = Path(rank_log_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    with open(path / f"rank_{rank}.log", "a") as f:
+        f.write(f"{datetime.now().isoformat()} env: {stage}\n")
 
 
 class InstinctRlEnv(ManagerBasedRlEnv):
@@ -41,21 +58,29 @@ class InstinctRlEnv(ManagerBasedRlEnv):
         self._manual_reset_pending = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=device)
 
         # Use InstinctScene so terrain cfg.class_type is honored (e.g. hacked_generator importer).
+        _log_rank_stage("scene build start")
         self.scene = InstinctScene(self.cfg.scene, device=device)
+        _log_rank_stage("scene build done")
+        _log_rank_stage("simulation build start")
         self.sim = Simulation(
             num_envs=self.scene.num_envs,
             cfg=self.cfg.sim,
             model=self.scene.compile(),
             device=device,
         )
+        _log_rank_stage("simulation build done")
 
+        _log_rank_stage("scene initialize start")
         self.scene.initialize(
             mj_model=self.sim.mj_model,
             model=self.sim.model,
             data=self.sim.data,
         )
+        _log_rank_stage("scene initialize done")
         if self.scene.sensor_context is not None:
+            _log_rank_stage("sensor context set start")
             self.sim.set_sensor_context(self.scene.sensor_context)
+            _log_rank_stage("sensor context set done")
 
         print_info("")
         table = PrettyTable()
@@ -81,8 +106,12 @@ class InstinctRlEnv(ManagerBasedRlEnv):
             self._offline_renderer = renderer
         self.metadata["render_fps"] = 1.0 / self.step_dt
 
+        _log_rank_stage("load managers start")
         self.load_managers()
+        _log_rank_stage("load managers done")
+        _log_rank_stage("setup manager visualizers start")
         self.setup_manager_visualizers()
+        _log_rank_stage("setup manager visualizers done")
 
     def load_managers(self) -> None:
         # Route Instinct tasks through MultiRewardManager so reward logging matches

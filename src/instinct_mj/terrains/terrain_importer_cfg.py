@@ -90,7 +90,7 @@ class TerrainImporterCfg(TerrainImporterCfgBase):
     Set to ``None`` to disable caching.
     """
 
-    virtual_obstacle_cache_wait_s: float = 600.0
+    virtual_obstacle_cache_wait_s: float = 30.0
     """Maximum time non-zero distributed ranks wait for rank 0 to write the cache."""
 
     collision_debug_vis: bool = False
