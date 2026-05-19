@@ -227,7 +227,11 @@ class InstinctRlEnv(ManagerBasedRlEnv):
         _log_rank_stage("sense kernel done")
 
         _log_rank_stage("sense finalize start")
-        ctx.finalize()
+        for sensor in ctx.raycast_sensors:
+            sensor_name = getattr(getattr(sensor, "cfg", None), "name", type(sensor).__name__)
+            _log_rank_stage(f"sense finalize sensor {sensor_name} start")
+            sensor.postprocess_rays()
+            _log_rank_stage(f"sense finalize sensor {sensor_name} done")
         _log_rank_stage("sense finalize done")
 
     def update_visualizers(self, visualizer: DebugVisualizer) -> None:
