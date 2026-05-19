@@ -75,7 +75,7 @@ __file_dir__ = os.path.dirname(os.path.realpath(__file__))
 # Keep `filtered_motion_selection_filepath` under this directory unless you point it elsewhere.
 # Example:
 # _PARKOUR_DATASET_DIR = os.path.expanduser("~/your/path/to/parkour_motion_reference")
-_PARKOUR_DATASET_DIR = os.path.expanduser("/home/galbot/myx/InstinctMJ_Galbot/src/instinct_mj/parkour_motion_reference")
+_PARKOUR_DATASET_DIR = os.path.expanduser("/mnt/home/mayuxuan/InstinctMJ_Galbot/src/instinct_mj/parkour_motion_reference")
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     update_period=0.02,
     num_frames=10,
     motion_buffers={"run_walk": AmassMotionCfg()},
-    mp_split_method="Even",
+    mp_split_method="None",
 )
 
 

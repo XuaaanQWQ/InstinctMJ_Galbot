@@ -18,3 +18,8 @@ __pycache__/
 *.pyo
 *.pyd
 *.pyc.*
+
+# command
+COMMAND.md
+
+.ipynb_checkpoints/
