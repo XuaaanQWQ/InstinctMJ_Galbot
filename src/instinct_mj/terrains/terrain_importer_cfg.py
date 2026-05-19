@@ -6,13 +6,18 @@ from typing import Literal
 
 from mjlab.terrains import TerrainEntityCfg as TerrainImporterCfgBase
 
-from .terrain_importer import TerrainImporter
 from .virtual_obstacle import VirtualObstacleCfg
+
+
+def _default_terrain_importer_class() -> type:
+    from .terrain_importer import TerrainImporter
+
+    return TerrainImporter
 
 
 @dataclass(kw_only=True)
 class TerrainImporterCfg(TerrainImporterCfgBase):
-    class_type: type = TerrainImporter
+    class_type: type = field(default_factory=_default_terrain_importer_class)
     """The inherited class to use for the terrain importer."""
 
     virtual_obstacles: dict[str, VirtualObstacleCfg] = field(default_factory=dict)
@@ -85,7 +90,7 @@ class TerrainImporterCfg(TerrainImporterCfgBase):
     Set to ``None`` to disable caching.
     """
 
-    virtual_obstacle_cache_wait_s: float = 600.0
+    virtual_obstacle_cache_wait_s: float = 30.0
     """Maximum time non-zero distributed ranks wait for rank 0 to write the cache."""
 
     collision_debug_vis: bool = False

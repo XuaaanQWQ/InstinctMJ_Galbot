@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.managers import SceneEntityCfg
 
-from instinct_mj.terrains import TerrainImporter
+from instinct_mj.terrains.terrain_importer import TerrainImporter
 
 if TYPE_CHECKING:
     from mjlab.entity import Entity

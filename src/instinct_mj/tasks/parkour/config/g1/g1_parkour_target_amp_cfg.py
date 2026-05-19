@@ -67,6 +67,7 @@ from instinct_mj.tasks.parkour.config.parkour_env_cfg import (
 )
 from instinct_mj.tasks.parkour.mdp.commands import PoseVelocityCommandCfg
 from instinct_mj.terrains.terrain_importer_cfg import TerrainImporterCfg as InstinctTerrainImporterCfg
+from instinct_mj.terrains.terrain_importer import TerrainImporter
 from instinct_mj.terrains.virtual_obstacle.edge_cylinder_cfg import GreedyconcatEdgeCylinderCfg
 from instinct_mj.utils.noise import CropAndResizeCfg, DepthNormalizationCfg, GaussianBlurNoiseCfg
 
@@ -236,6 +237,7 @@ def instinct_g1_parkour_amp_env_cfg(
         merge_collinear_line_distance=0.04,
     )
     cfg.scene.terrain = InstinctTerrainImporterCfg(
+        class_type=TerrainImporter,
         terrain_type="hacked_generator",
         terrain_generator=copy.deepcopy(terrain_gen),
         max_init_terrain_level=5,

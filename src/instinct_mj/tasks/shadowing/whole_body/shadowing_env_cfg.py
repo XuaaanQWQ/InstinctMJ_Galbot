@@ -37,7 +37,7 @@ from instinct_mj.monitors import (
     ShadowingVelocityMonitorTerm,
     TorqueMonitorSensorCfg,
 )
-from instinct_mj.terrains.height_field import PerlinPlaneTerrainCfg
+from instinct_mj.terrains.height_field.hf_terrains_cfg import PerlinPlaneTerrainCfg
 
 
 def _edit_shadowing_scene_spec(spec: mujoco.MjSpec) -> None:

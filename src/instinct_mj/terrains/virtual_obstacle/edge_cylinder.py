@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 import torch
 import trimesh
-from mjlab.utils.lab_api import math as math_utils
 from numpy.linalg import norm
 from sklearn.cluster import DBSCAN
 
@@ -677,6 +676,8 @@ class RayEdgeCylinder(VirtualObstacleBase):
             - x, y, z coordinates of the edge start point
             - x, y, z coordinates of the edge end point
         """
+        from mjlab.utils.lab_api import math as math_utils
+
         self.device = device if isinstance(device, torch.device) else torch.device(device)
         # extract vertices and faces from the trimesh object
         points = mesh.vertices.astype(np.float32)
