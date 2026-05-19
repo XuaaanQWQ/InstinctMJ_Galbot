@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import warp as wp
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers import RewardTermCfg
 from mjlab.sim import Simulation
@@ -196,7 +197,7 @@ class InstinctRlEnv(ManagerBasedRlEnv):
         _log_rank_stage("reset command_manager.compute done")
 
         _log_rank_stage("reset sim.sense start")
-        self.sim.sense()
+        self._sense_with_rank_logging()
         _log_rank_stage("reset sim.sense done")
 
         _log_rank_stage("reset observation_manager.compute start")
@@ -208,6 +209,26 @@ class InstinctRlEnv(ManagerBasedRlEnv):
         _log_rank_stage("reset recorder_manager.record_post_reset done")
         _log_rank_stage("reset done")
         return self.obs_buf, self.extras
+
+    def _sense_with_rank_logging(self) -> None:
+        if self.sim._sensor_context is None:
+            _log_rank_stage("sense skipped no sensor context")
+            return
+
+        ctx = self.sim._sensor_context
+        _log_rank_stage("sense prepare start")
+        ctx.prepare()
+        _log_rank_stage("sense prepare done")
+
+        _log_rank_stage("sense kernel start")
+        with wp.ScopedDevice(self.sim.wp_device):
+            # Avoid sensing CUDA graph hangs seen in multi-process distributed startup.
+            self.sim._sense_kernel()
+        _log_rank_stage("sense kernel done")
+
+        _log_rank_stage("sense finalize start")
+        ctx.finalize()
+        _log_rank_stage("sense finalize done")
 
     def update_visualizers(self, visualizer: DebugVisualizer) -> None:
         super().update_visualizers(visualizer)
