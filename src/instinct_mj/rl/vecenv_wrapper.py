@@ -2,27 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-import os
-from pathlib import Path
-
 import torch
 from instinct_rl.env import VecEnv
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
-
-
-def _log_rank_stage(stage: str) -> None:
-    rank = os.environ.get("RANK", "0")
-    world_size = os.environ.get("WORLD_SIZE", "1")
-    message = f"[INFO rank {rank}/{world_size}] vecenv: {stage}"
-    print(message, flush=True)
-    rank_log_dir = os.environ.get("INSTINCT_RANK_LOG_DIR")
-    if rank_log_dir is None:
-        return
-    path = Path(rank_log_dir)
-    path.mkdir(parents=True, exist_ok=True)
-    with open(path / f"rank_{rank}.log", "a") as f:
-        f.write(f"{datetime.now().isoformat()} vecenv: {stage}\n")
 
 
 class InstinctRlVecEnvWrapper(VecEnv):
@@ -58,9 +40,7 @@ class InstinctRlVecEnvWrapper(VecEnv):
         self.num_critic_obs = self._group_flat_dim(self.critic_group) if self.critic_group is not None else None
 
         # Reset once because instinct_rl runner does not call reset before rollout.
-        _log_rank_stage("initial reset start")
         self.env.reset()
-        _log_rank_stage("initial reset done")
 
     @property
     def cfg(self) -> ManagerBasedRlEnvCfg:

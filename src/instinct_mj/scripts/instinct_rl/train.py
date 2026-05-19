@@ -9,7 +9,6 @@ import signal
 import sys
 from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime
-from datetime import timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -276,16 +275,6 @@ def _resolve_distributed_runtime(
     return device, seed, rank, world_size, is_distributed
 
 
-def _log_rank_stage(rank: int, world_size: int, stage: str, log_dir: Path | None = None) -> None:
-    print(f"[INFO rank {rank}/{world_size}] {stage}", flush=True)
-    if log_dir is None:
-        return
-    rank_log_dir = log_dir / "rank_logs"
-    rank_log_dir.mkdir(parents=True, exist_ok=True)
-    with open(rank_log_dir / f"rank_{rank}.log", "a") as f:
-        f.write(f"{datetime.now().isoformat()} {stage}\n")
-
-
 def _stabilize_distributed_terrain_seed(cfg: TrainConfig, base_seed: int, is_distributed: bool) -> int | None:
     if not is_distributed:
         return None
@@ -299,7 +288,6 @@ def _stabilize_distributed_terrain_seed(cfg: TrainConfig, base_seed: int, is_dis
 
 def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     log_dir = log_dir.expanduser().resolve()
-    os.environ["INSTINCT_RANK_LOG_DIR"] = str(log_dir / "rank_logs")
 
     if InstinctRlVecEnvWrapper is None:
         raise ImportError(
@@ -329,14 +317,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     if is_distributed and device.startswith("cuda"):
         torch.cuda.set_device(_parse_cuda_device_index(device))
     if is_distributed and not dist.is_initialized():
-        _log_rank_stage(rank, world_size, "init_process_group start", log_dir)
         dist.init_process_group(
             backend="nccl",
             rank=rank,
             world_size=world_size,
-            timeout=timedelta(minutes=10),
         )
-        _log_rank_stage(rank, world_size, "init_process_group done", log_dir)
 
     if device.startswith("cpu"):
         raise ValueError(
@@ -362,13 +347,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         if terrain_seed is not None:
             print(f"[INFO] Distributed terrain generator seed fixed to {terrain_seed} for shared initialization cache.")
 
-    _log_rank_stage(rank, world_size, "env build start", log_dir)
     env = InstinctRlEnv(
         cfg=cfg.env,
         device=device,
         render_mode="rgb_array" if video_enabled else None,
     )
-    _log_rank_stage(rank, world_size, "env build done", log_dir)
 
     if video_enabled:
         env = VideoRecorder(
@@ -380,13 +363,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         )
         print("[INFO] Recording videos during training.")
 
-    _log_rank_stage(rank, world_size, "vec env wrapper start", log_dir)
     vec_env = InstinctRlVecEnvWrapper(
         env,
         policy_group=cfg.agent.policy_observation_group,
         critic_group=cfg.agent.critic_observation_group,
     )
-    _log_rank_stage(rank, world_size, "vec env wrapper done", log_dir)
 
     train_viewer = None
     if viewer_enabled:
@@ -410,25 +391,13 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     runner_cls = load_runner_cls(task_id) or OnPolicyRunner
     agent_cfg_dict = cfg.agent.to_dict()
 
-    _log_rank_stage(rank, world_size, "runner build start", log_dir)
     runner = runner_cls(
         vec_env,
         agent_cfg_dict,
         log_dir=str(log_dir),
         device=cfg.agent.device,
     )
-    _log_rank_stage(rank, world_size, "runner build done", log_dir)
     runner.add_git_repo_to_log(__file__)
-    if is_distributed:
-        distributed_data_parallel = runner.alg.distributed_data_parallel
-
-        def _logged_distributed_data_parallel():
-            _log_rank_stage(rank, world_size, "ddp wrap start", log_dir)
-            result = distributed_data_parallel()
-            _log_rank_stage(rank, world_size, "ddp wrap done", log_dir)
-            return result
-
-        runner.alg.distributed_data_parallel = _logged_distributed_data_parallel
 
     if cfg.agent.resume:
         log_root_path = log_dir.parent
@@ -486,7 +455,6 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
         signal.signal(signum, _interrupt_handler)
 
     try:
-        _log_rank_stage(rank, world_size, "learn start", log_dir)
         runner.learn(
             num_learning_iterations=cfg.agent.max_iterations,
             init_at_random_ep_len=True,
