@@ -71,11 +71,7 @@ from instinct_mj.terrains.virtual_obstacle.edge_cylinder_cfg import Greedyconcat
 from instinct_mj.utils.noise import CropAndResizeCfg, DepthNormalizationCfg, GaussianBlurNoiseCfg
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
-# NOTE: Change this to your local parkour dataset root before training / play.
-# Keep `filtered_motion_selection_filepath` under this directory unless you point it elsewhere.
-# Example:
-# _PARKOUR_DATASET_DIR = os.path.expanduser("~/your/path/to/parkour_motion_reference")
-_PARKOUR_DATASET_DIR = os.path.expanduser("/mnt/home/mayuxuan/InstinctMJ_Galbot/src/instinct_mj/parkour_motion_reference")
+_PARKOUR_DATASET_DIR = os.path.abspath(os.path.join(__file_dir__, "../../../../parkour_motion_reference"))
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +160,18 @@ def _parkour_g1_with_shoe_spec() -> mujoco.MjSpec:
     """Build MjSpec for the G1 robot with shoe mesh."""
     spec = mujoco.MjSpec.from_file(
         os.path.abspath(f"{__file_dir__}/../../mjcf/g1_29dof_torsoBase_popsicle_with_shoe.xml")
+    )
+    # Remove embedded per-robot lights to avoid localized over-bright spots.
+    for body in spec.bodies:
+        for light in tuple(body.lights):
+            spec.delete(light)
+    return spec
+
+
+def _parkour_g1_backpack_with_shoe_spec() -> mujoco.MjSpec:
+    """Build MjSpec for the mode_15 backpack G1 robot with shoe collision."""
+    spec = mujoco.MjSpec.from_file(
+        os.path.abspath(f"{__file_dir__}/../../mjcf/g1_29dof_torsoBase_popsicle_backpack_with_shoe.xml")
     )
     # Remove embedded per-robot lights to avoid localized over-bright spots.
     for body in spec.bodies:
@@ -996,6 +1004,14 @@ def instinct_g1_parkour_amp_velocity_heightscan_cfg(
 ) -> ManagerBasedRlEnvCfg:
     cfg = instinct_g1_parkour_amp_final_cfg(play=play, shoe=shoe)
 
+    for sub_terrain_cfg in cfg.scene.terrain.terrain_generator.sub_terrains.values():
+        if hasattr(sub_terrain_cfg, "wall_prob"):
+            sub_terrain_cfg.wall_prob = [0.0, 0.0, 0.0, 0.0]
+        if hasattr(sub_terrain_cfg, "wall_height"):
+            sub_terrain_cfg.wall_height = 0.0
+        if hasattr(sub_terrain_cfg, "wall_thickness"):
+            sub_terrain_cfg.wall_thickness = 0.0
+
     height_scan_size = (3.0, 1.5)
     height_scan_resolution = 0.05
     height_scan_offset = (0.75, 0.0, 1.2)
@@ -1045,5 +1061,20 @@ def instinct_g1_parkour_amp_velocity_heightscan_cfg(
     cfg.curriculum["terrain_levels"] = CurriculumTermCfg(
         func=locomotion_mdp.terrain_levels_vel,
     )
+
+    return cfg
+
+
+def instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(
+    *,
+    play: bool = False,
+    shoe: bool = True,
+) -> ManagerBasedRlEnvCfg:
+    cfg = instinct_g1_parkour_amp_velocity_heightscan_cfg(play=play, shoe=shoe)
+
+    robot_cfg_with_backpack = copy.deepcopy(cfg.scene.entities["robot"])
+    robot_cfg_with_backpack.spec_fn = _parkour_g1_backpack_with_shoe_spec
+    robot_cfg_with_backpack.collisions = tuple()
+    cfg.scene.entities["robot"] = robot_cfg_with_backpack
 
     return cfg

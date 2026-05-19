@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from mjlab.terrains import TerrainEntityCfg as TerrainImporterCfgBase
@@ -75,6 +76,17 @@ class TerrainImporterCfg(TerrainImporterCfgBase):
 
     virtual_obstacle_hfield_mesh_like_min_edge_length: float = 0.0
     """Minimum raw sharp-edge length (meters) kept in ``mesh_like`` before tracing."""
+
+    virtual_obstacle_cache_dir: str | None = str(Path.home() / ".cache" / "instinct_mj" / "virtual_obstacles")
+    """Directory used to cache terrain virtual-obstacle edge extraction outputs.
+
+    This mainly avoids repeated expensive edge extraction when distributed
+    training launches multiple ranks for the same terrain configuration.
+    Set to ``None`` to disable caching.
+    """
+
+    virtual_obstacle_cache_wait_s: float = 600.0
+    """Maximum time non-zero distributed ranks wait for rank 0 to write the cache."""
 
     collision_debug_vis: bool = False
     """Whether to visualize terrain collision geoms by tinting them in purple."""

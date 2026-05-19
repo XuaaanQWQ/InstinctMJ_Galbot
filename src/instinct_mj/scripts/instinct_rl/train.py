@@ -275,6 +275,17 @@ def _resolve_distributed_runtime(
     return device, seed, rank, world_size, is_distributed
 
 
+def _stabilize_distributed_terrain_seed(cfg: TrainConfig, base_seed: int, is_distributed: bool) -> int | None:
+    if not is_distributed:
+        return None
+    terrain = getattr(cfg.env.scene, "terrain", None)
+    terrain_generator = getattr(terrain, "terrain_generator", None)
+    if terrain_generator is None or getattr(terrain_generator, "seed", None) is not None:
+        return None
+    terrain_generator.seed = int(base_seed)
+    return terrain_generator.seed
+
+
 def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     log_dir = log_dir.expanduser().resolve()
 
@@ -303,6 +314,8 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
             )
     configure_torch_backends()
 
+    if is_distributed and device.startswith("cuda"):
+        torch.cuda.set_device(_parse_cuda_device_index(device))
     if is_distributed and not dist.is_initialized():
         dist.init_process_group(
             backend="nccl",
@@ -315,9 +328,11 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
             "The current instinct_rl training pipeline requires CUDA runtime stats. "
             "Use a GPU device, e.g. `--device cuda:0`."
         )
+    base_seed = int(cfg.agent.seed)
     cfg.agent.device = device
     cfg.agent.seed = seed
     cfg.env.seed = seed
+    terrain_seed = _stabilize_distributed_terrain_seed(cfg, base_seed, is_distributed)
     if cfg.num_envs is not None:
         cfg.env.scene.num_envs = cfg.num_envs
 
@@ -329,6 +344,8 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     )
     if rank == 0:
         print(f"[INFO] Logging to: {log_dir}")
+        if terrain_seed is not None:
+            print(f"[INFO] Distributed terrain generator seed fixed to {terrain_seed} for shared initialization cache.")
 
     env = InstinctRlEnv(
         cfg=cfg.env,

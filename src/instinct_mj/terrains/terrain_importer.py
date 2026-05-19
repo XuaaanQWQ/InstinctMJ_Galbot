@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import copy
 import gc
+import hashlib
+import json
 import math
+import os
 import time
+from dataclasses import asdict, is_dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import mujoco
 import numpy as np
 import torch
+import torch.distributed as dist
 import trimesh
 from mjlab.terrains import SubTerrainCfg as SubTerrainBaseCfg
 from mjlab.terrains import TerrainEntity as TerrainImporterBase
@@ -213,7 +219,133 @@ class TerrainImporter(TerrainImporterBase):
         # NOTE: generate virtual obstacle first because it might modify the mesh.
         for name, virtual_obstacle in self._virtual_obstacles.items():
             with Timer(f"Generate virtual obstacle {name}"):
+                if not self._try_generate_cached_virtual_obstacle(name, virtual_obstacle, mesh):
+                    virtual_obstacle.generate(mesh, device=self.device)
+
+    def _try_generate_cached_virtual_obstacle(
+        self,
+        name: str,
+        virtual_obstacle: VirtualObstacleBase,
+        mesh: trimesh.Trimesh,
+    ) -> bool:
+        """Load/generate cacheable edge virtual obstacles across distributed ranks."""
+        if not getattr(virtual_obstacle, "supports_edge_segment_generation", False):
+            return False
+        is_distributed = dist.is_available() and dist.is_initialized()
+        if not is_distributed:
+            return False
+        cache_dir = getattr(self.cfg, "virtual_obstacle_cache_dir", None)
+        if cache_dir is None:
+            return False
+
+        cache_path = self._virtual_obstacle_cache_path(name, virtual_obstacle, mesh, cache_dir)
+        rank = dist.get_rank()
+        wait_s = float(getattr(self.cfg, "virtual_obstacle_cache_wait_s", 600.0))
+
+        if cache_path.exists():
+            edge_end_points = self._try_load_cached_virtual_obstacle(cache_path)
+            if edge_end_points is None and rank != 0:
+                edge_end_points = self._wait_for_cached_virtual_obstacle(cache_path, wait_s)
+            if edge_end_points is None:
+                print(f"[WARN] Ignoring invalid virtual obstacle cache: {cache_path}")
+            else:
+                self._set_cached_virtual_obstacle_edges(virtual_obstacle, edge_end_points)
+                if rank == 0:
+                    print(f"Loaded virtual obstacle {name} cache: {cache_path}")
+                return True
+
+        if rank != 0:
+            edge_end_points = self._wait_for_cached_virtual_obstacle(cache_path, wait_s)
+            if edge_end_points is None:
+                print(
+                    f"[WARN] Virtual obstacle cache wait timed out on rank {rank}; "
+                    f"generating locally: {cache_path}"
+                )
                 virtual_obstacle.generate(mesh, device=self.device)
+                return True
+            self._set_cached_virtual_obstacle_edges(virtual_obstacle, edge_end_points)
+            print(f"Loaded virtual obstacle {name} cache on rank {rank}: {cache_path}")
+            return True
+
+        virtual_obstacle.generate(mesh, device=self.device)
+        edge_end_points = virtual_obstacle.edges_pyt.detach().cpu().numpy().astype(np.float32, copy=False)
+        self._write_cached_virtual_obstacle(cache_path, edge_end_points)
+        print(f"Wrote virtual obstacle {name} cache on rank 0: {cache_path}")
+        return True
+
+    def _virtual_obstacle_cache_path(
+        self,
+        name: str,
+        virtual_obstacle: VirtualObstacleBase,
+        mesh: trimesh.Trimesh,
+        cache_dir: str,
+    ) -> Path:
+        cache_root = Path(cache_dir).expanduser()
+        obstacle_cfg = self._to_cacheable_data(virtual_obstacle.cfg)
+        terrain_cfg = self._to_cacheable_data(getattr(self.cfg, "terrain_generator", None))
+        payload = {
+            "name": name,
+            "obstacle_cfg": obstacle_cfg,
+            "terrain_cfg": terrain_cfg,
+            "vertices_shape": tuple(mesh.vertices.shape),
+            "faces_shape": tuple(mesh.faces.shape),
+            "vertices_sha1": hashlib.sha1(np.ascontiguousarray(mesh.vertices).view(np.uint8)).hexdigest(),
+            "faces_sha1": hashlib.sha1(np.ascontiguousarray(mesh.faces).view(np.uint8)).hexdigest(),
+        }
+        cache_key = hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+        return cache_root / f"{name}_{cache_key}.npz"
+
+    @classmethod
+    def _to_cacheable_data(cls, value):
+        if is_dataclass(value):
+            return cls._to_cacheable_data(asdict(value))
+        if isinstance(value, dict):
+            return {str(key): cls._to_cacheable_data(val) for key, val in sorted(value.items(), key=lambda item: str(item[0]))}
+        if isinstance(value, (list, tuple)):
+            return [cls._to_cacheable_data(item) for item in value]
+        if isinstance(value, type):
+            return f"{value.__module__}.{value.__qualname__}"
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return repr(value)
+
+    @staticmethod
+    def _try_load_cached_virtual_obstacle(cache_path: Path) -> np.ndarray | None:
+        try:
+            with np.load(cache_path) as data:
+                edge_end_points = data["edge_end_points"].astype(np.float32, copy=False)
+        except (EOFError, OSError, ValueError, KeyError):
+            return None
+        if edge_end_points.ndim != 2 or edge_end_points.shape[1] != 6:
+            return None
+        return edge_end_points
+
+    @staticmethod
+    def _write_cached_virtual_obstacle(cache_path: Path, edge_end_points: np.ndarray) -> None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = cache_path.with_suffix(f".{os.getpid()}.tmp.npz")
+        np.savez_compressed(tmp_path, edge_end_points=edge_end_points.astype(np.float32, copy=False))
+        os.replace(tmp_path, cache_path)
+
+    def _wait_for_cached_virtual_obstacle(self, cache_path: Path, wait_s: float) -> np.ndarray | None:
+        start_time = time.monotonic()
+        while True:
+            if cache_path.exists():
+                edge_end_points = self._try_load_cached_virtual_obstacle(cache_path)
+                if edge_end_points is not None:
+                    return edge_end_points
+            if time.monotonic() - start_time > wait_s:
+                return None
+            time.sleep(0.25)
+
+    def _set_cached_virtual_obstacle_edges(
+        self,
+        virtual_obstacle: VirtualObstacleBase,
+        edge_end_points: np.ndarray,
+    ) -> None:
+        if not hasattr(virtual_obstacle, "_set_edge_cylinders"):
+            raise TypeError(f"{type(virtual_obstacle).__name__} does not support cached edge cylinders.")
+        virtual_obstacle._set_edge_cylinders(edge_end_points, device=self.device)
 
     @staticmethod
     def _simplify_polyline_collinear_indices(
