@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from mjlab import types
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers import RewardTermCfg
 from mjlab.sim import Simulation
@@ -170,7 +169,7 @@ class InstinctRlEnv(ManagerBasedRlEnv):
         seed: int | None = None,
         env_ids: torch.Tensor | None = None,
         options: dict[str, Any] | None = None,
-    ) -> tuple[types.VecEnvObs, dict]:
+    ) -> tuple[object, dict]:
         del options  # Unused.
         _log_rank_stage("reset start")
         if env_ids is None:
