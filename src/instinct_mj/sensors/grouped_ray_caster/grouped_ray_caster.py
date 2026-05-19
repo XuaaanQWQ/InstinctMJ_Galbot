@@ -464,19 +464,20 @@ class GroupedRayCaster(RayCastSensor):
         runtime_data = self._runtime_data
         render_context = self._get_backend_render_context()
         assert runtime_model is not None and runtime_data is not None
-        rays(
-            m=runtime_model.struct,  # type: ignore[attr-defined]
-            d=runtime_data.struct,  # type: ignore[attr-defined]
-            pnt=wp.from_torch(active_hop_pnt.contiguous(), dtype=wp.vec3),
-            vec=wp.from_torch(active_hop_vec.contiguous(), dtype=wp.vec3),
-            geomgroup=self._geomgroup,  # pyright: ignore[reportArgumentType]
-            flg_static=True,
-            bodyexclude=wp.from_torch(active_hop_bodyexclude.contiguous(), dtype=wp.int32),
-            dist=wp.from_torch(active_hop_dist.contiguous(), dtype=wp.float32),
-            geomid=wp.from_torch(active_hop_geomid.contiguous(), dtype=wp.int32),
-            normal=wp.from_torch(active_hop_normal.contiguous(), dtype=wp.vec3),
-            rc=render_context,
-        )
+        with wp.ScopedDevice(self._runtime_wp_device):
+            rays(
+                m=runtime_model.struct,  # type: ignore[attr-defined]
+                d=runtime_data.struct,  # type: ignore[attr-defined]
+                pnt=wp.from_torch(active_hop_pnt.contiguous(), dtype=wp.vec3),
+                vec=wp.from_torch(active_hop_vec.contiguous(), dtype=wp.vec3),
+                geomgroup=self._geomgroup,  # pyright: ignore[reportArgumentType]
+                flg_static=True,
+                bodyexclude=wp.from_torch(active_hop_bodyexclude.contiguous(), dtype=wp.int32),
+                dist=wp.from_torch(active_hop_dist.contiguous(), dtype=wp.float32),
+                geomid=wp.from_torch(active_hop_geomid.contiguous(), dtype=wp.int32),
+                normal=wp.from_torch(active_hop_normal.contiguous(), dtype=wp.vec3),
+                rc=render_context,
+            )
 
         return (
             active_env_ids,
