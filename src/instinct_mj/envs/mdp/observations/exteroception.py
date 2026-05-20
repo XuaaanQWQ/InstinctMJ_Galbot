@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Literal
 
 import cv2
 import torch
+import torch.nn.functional as F
 from mjlab.managers import ManagerTermBase, ManagerTermBaseCfg, SceneEntityCfg
 from mjlab.utils.lab_api import math as math_utils
 
@@ -146,6 +147,87 @@ def height_scan_image(
             f"expected {expected_num_rays} from size={size}, resolution={resolution}."
         )
     return scan.view(scan.shape[0], 1, grid_y, grid_x).contiguous()
+
+
+def height_scan_image_noised(
+    env: ManagerBasedEnv,
+    sensor_name: str,
+    size: tuple[float, float],
+    resolution: float,
+    offset: float = 0.0,
+    miss_value: float | None = None,
+    height_noise_std: float = 0.02,
+    height_bias_range: tuple[float, float] = (-0.03, 0.03),
+    drift_pixels: tuple[int, int] = (1, 1),
+    dropout_prob: float = 0.15,
+    dropout_patch_size_range: tuple[int, int] = (2, 6),
+    dropout_value: float | None = None,
+) -> torch.Tensor:
+    """Height scan with sim-to-real map noise and drift for training."""
+    scan = height_scan_image(
+        env=env,
+        sensor_name=sensor_name,
+        size=size,
+        resolution=resolution,
+        offset=offset,
+        miss_value=miss_value,
+    )
+
+    if height_noise_std > 0.0:
+        scan = scan + torch.randn_like(scan) * height_noise_std
+
+    if height_bias_range[0] != 0.0 or height_bias_range[1] != 0.0:
+        bias = torch.empty((scan.shape[0], 1, 1, 1), device=scan.device).uniform_(
+            height_bias_range[0],
+            height_bias_range[1],
+        )
+        scan = scan + bias
+
+    max_dx, max_dy = drift_pixels
+    if max_dx > 0 or max_dy > 0:
+        h, w = scan.shape[-2:]
+        shifts_x = (
+            torch.randint(-max_dx, max_dx + 1, (scan.shape[0],), device=scan.device)
+            if max_dx > 0
+            else torch.zeros((scan.shape[0],), dtype=torch.long, device=scan.device)
+        )
+        shifts_y = (
+            torch.randint(-max_dy, max_dy + 1, (scan.shape[0],), device=scan.device)
+            if max_dy > 0
+            else torch.zeros((scan.shape[0],), dtype=torch.long, device=scan.device)
+        )
+        padded = F.pad(scan, (max_dx, max_dx, max_dy, max_dy), mode="replicate")
+        drifted = torch.empty_like(scan)
+        for dy in range(-max_dy, max_dy + 1):
+            for dx in range(-max_dx, max_dx + 1):
+                env_mask = (shifts_x == dx) & (shifts_y == dy)
+                y0 = max_dy - dy
+                x0 = max_dx - dx
+                drifted[env_mask] = padded[env_mask, :, y0 : y0 + h, x0 : x0 + w]
+        scan = drifted
+
+    if dropout_prob > 0.0:
+        mask = torch.rand((scan.shape[0],), device=scan.device) < dropout_prob
+        h, w = scan.shape[-2:]
+        min_patch, max_patch = dropout_patch_size_range
+        max_patch = max(min_patch, max_patch)
+        patch_h = torch.randint(min_patch, max_patch + 1, (scan.shape[0],), device=scan.device).clamp(max=h)
+        patch_w = torch.randint(min_patch, max_patch + 1, (scan.shape[0],), device=scan.device).clamp(max=w)
+        y0 = (torch.rand((scan.shape[0],), device=scan.device) * (h - patch_h + 1)).long()
+        x0 = (torch.rand((scan.shape[0],), device=scan.device) * (w - patch_w + 1)).long()
+        y_grid = torch.arange(h, device=scan.device).view(1, h, 1)
+        x_grid = torch.arange(w, device=scan.device).view(1, 1, w)
+        patch_mask = (
+            mask.view(-1, 1, 1)
+            & (y_grid >= y0.view(-1, 1, 1))
+            & (y_grid < (y0 + patch_h).view(-1, 1, 1))
+            & (x_grid >= x0.view(-1, 1, 1))
+            & (x_grid < (x0 + patch_w).view(-1, 1, 1))
+        )
+        fill = scan.mean(dim=(-2, -1), keepdim=True) if dropout_value is None else torch.full_like(scan, dropout_value)
+        scan = torch.where(patch_mask.unsqueeze(1), fill, scan)
+
+    return scan.contiguous()
 
 
 class delayed_visualizable_image(ManagerTermBase):

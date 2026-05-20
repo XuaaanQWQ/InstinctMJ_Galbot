@@ -1100,9 +1100,59 @@ def instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(
 ) -> ManagerBasedRlEnvCfg:
     cfg = instinct_g1_parkour_amp_velocity_heightscan_cfg(play=play, shoe=shoe)
 
+    if not play:
+        height_scan_size = (3.0, 1.5)
+        height_scan_resolution = 0.05
+        noised_height_scan_term = ObservationTermCfg(
+            func=instinct_envs_mdp.height_scan_image_noised,
+            params={
+                "sensor_name": "height_scanner",
+                "size": height_scan_size,
+                "resolution": height_scan_resolution,
+                "height_noise_std": 0.02,
+                "height_bias_range": (-0.03, 0.03),
+                "drift_pixels": (1, 1),
+                "dropout_prob": 0.15,
+                "dropout_patch_size_range": (2, 6),
+            },
+            clip=(-20.0, 20.0),
+            noise=None,
+        )
+        cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(noised_height_scan_term)
+
     robot_cfg_with_backpack = copy.deepcopy(cfg.scene.entities["robot"])
     robot_cfg_with_backpack.spec_fn = _parkour_g1_backpack_with_shoe_spec
     robot_cfg_with_backpack.collisions = tuple()
     cfg.scene.entities["robot"] = robot_cfg_with_backpack
+
+    return cfg
+
+
+def instinct_g1_parkour_amp_target_heightscan_backpack_cfg(
+    *,
+    play: bool = False,
+    shoe: bool = True,
+) -> ManagerBasedRlEnvCfg:
+    cfg = instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(play=play, shoe=shoe)
+    target_cfg = instinct_g1_parkour_amp_final_cfg(play=play, shoe=shoe)
+
+    target_command = copy.deepcopy(target_cfg.commands["base_velocity"])
+    if isinstance(target_command, PoseVelocityCommandCfg) and target_command.velocity_ranges is not None:
+        target_command.velocity_ranges.pop("square_gaps", None)
+    cfg.commands["base_velocity"] = target_command
+    cfg.curriculum = copy.deepcopy(target_cfg.curriculum)
+
+    clean_height_scan_term = ObservationTermCfg(
+        func=instinct_envs_mdp.height_scan_image,
+        params={
+            "sensor_name": "height_scanner",
+            "size": (3.0, 1.5),
+            "resolution": 0.05,
+        },
+        clip=(-20.0, 20.0),
+        noise=None,
+    )
+    cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(clean_height_scan_term)
+    cfg.observations["critic"].terms["height_scan"] = copy.deepcopy(clean_height_scan_term)
 
     return cfg
