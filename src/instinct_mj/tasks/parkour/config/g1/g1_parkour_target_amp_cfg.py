@@ -1006,6 +1006,32 @@ def instinct_g1_parkour_amp_velocity_heightscan_cfg(
 ) -> ManagerBasedRlEnvCfg:
     cfg = instinct_g1_parkour_amp_final_cfg(play=play, shoe=shoe)
 
+    cfg.scene.terrain.max_init_terrain_level = 3
+    cfg.scene.terrain.terrain_generator.sub_terrains.pop("square_gaps", None)
+    sub_terrains = cfg.scene.terrain.terrain_generator.sub_terrains
+    if "boxes" in sub_terrains:
+        sub_terrains["boxes"].num_obstacles = 12
+        sub_terrains["boxes"].obstacle_height_range = (0.03, 0.25)
+        sub_terrains["boxes"].obstacle_width_range = (0.6, 1.2)
+        sub_terrains["boxes"].platform_width = 2.0
+    if "dense_boxes" in sub_terrains:
+        sub_terrains["dense_boxes"].num_obstacles = 60
+        sub_terrains["dense_boxes"].obstacle_height_range = (0.03, 0.20)
+        sub_terrains["dense_boxes"].obstacle_width_range = (0.25, 0.45)
+        sub_terrains["dense_boxes"].platform_width = 2.0
+    if "hf_pyramid_slope_inv" in sub_terrains:
+        sub_terrains["hf_pyramid_slope_inv"].slope_range = (0.0, 0.35)
+        sub_terrains["hf_pyramid_slope_inv"].platform_width = 2.5
+    if "pyramid_stairs" in sub_terrains:
+        sub_terrains["pyramid_stairs"].step_height_range = (0.03, 0.18)
+        sub_terrains["pyramid_stairs"].platform_width = 3.0
+    if "pyramid_stairs_inv" in sub_terrains:
+        sub_terrains["pyramid_stairs_inv"].step_height_range = (0.03, 0.18)
+        sub_terrains["pyramid_stairs_inv"].platform_width = 3.0
+    if "pyramid_stairs_high" in sub_terrains:
+        sub_terrains["pyramid_stairs_high"].step_height_range = (0.04, 0.28)
+    if "pyramid_stairs_inv_high" in sub_terrains:
+        sub_terrains["pyramid_stairs_inv_high"].step_height_range = (0.04, 0.28)
     for sub_terrain_cfg in cfg.scene.terrain.terrain_generator.sub_terrains.values():
         if hasattr(sub_terrain_cfg, "wall_prob"):
             sub_terrain_cfg.wall_prob = [0.0, 0.0, 0.0, 0.0]
