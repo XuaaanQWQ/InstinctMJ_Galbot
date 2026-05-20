@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields, is_dataclass
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 
 def _to_plain_dict(obj: Any) -> Any:
@@ -112,6 +112,8 @@ class InstinctRlOnPolicyRunnerCfg:
     log_interval: int = 1
     experiment_name: str = "instinct_mj"
     run_name: str = ""
+    logger: Literal["tensorboard", "swanlab"] = "tensorboard"
+    swanlab_project: str = "InstinctMJ_Galbot"
     resume: bool = False
     load_run: str = ".*"
     load_checkpoint: str = "model_.*.pt"

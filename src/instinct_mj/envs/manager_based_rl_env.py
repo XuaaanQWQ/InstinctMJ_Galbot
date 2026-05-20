@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import torch
+import warp as wp
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.managers import RewardTermCfg
 from mjlab.sim import Simulation
@@ -42,6 +43,7 @@ class InstinctRlEnv(ManagerBasedRlEnv):
 
         # Use InstinctScene so terrain cfg.class_type is honored (e.g. hacked_generator importer).
         self.scene = InstinctScene(self.cfg.scene, device=device)
+        wp.init()
         self.sim = Simulation(
             num_envs=self.scene.num_envs,
             cfg=self.cfg.sim,

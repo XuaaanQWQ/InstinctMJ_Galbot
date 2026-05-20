@@ -390,6 +390,10 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
 
     runner_cls = load_runner_cls(task_id) or OnPolicyRunner
     agent_cfg_dict = cfg.agent.to_dict()
+    if cfg.agent.logger == "swanlab":
+        from instinct_mj.utils.swanlab import patch_instinct_rl_swanlab_logger
+
+        patch_instinct_rl_swanlab_logger(agent_cfg_dict)
 
     runner = runner_cls(
         vec_env,
