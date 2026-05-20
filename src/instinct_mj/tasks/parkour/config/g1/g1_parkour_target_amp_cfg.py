@@ -1078,7 +1078,7 @@ def instinct_g1_parkour_amp_velocity_heightscan_cfg(
             "size": height_scan_size,
             "resolution": height_scan_resolution,
         },
-        clip=(-20.0, 20.0),
+        clip=(-1.5, 1.5),
         noise=None,
     )
     cfg.observations["policy"].terms.pop("depth_image", None)
@@ -1115,7 +1115,7 @@ def instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(
                 "dropout_prob": 0.15,
                 "dropout_patch_size_range": (2, 6),
             },
-            clip=(-20.0, 20.0),
+            clip=(-1.5, 1.5),
             noise=None,
         )
         cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(noised_height_scan_term)
@@ -1149,7 +1149,7 @@ def instinct_g1_parkour_amp_target_heightscan_backpack_cfg(
             "size": (3.0, 1.5),
             "resolution": 0.05,
         },
-        clip=(-20.0, 20.0),
+        clip=(-1.5, 1.5),
         noise=None,
     )
     cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(clean_height_scan_term)
