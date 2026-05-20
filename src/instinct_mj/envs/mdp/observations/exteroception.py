@@ -117,6 +117,7 @@ def height_scan_image(
     size: tuple[float, float],
     resolution: float,
     offset: float = 0.0,
+    delta_h: float = 0.0,
     miss_value: float | None = None,
 ) -> torch.Tensor:
     """Raycast height scan in CNN-friendly BCHW layout."""
@@ -135,6 +136,9 @@ def height_scan_image(
         frame_z = frame_pos_w[:, :, 2:3]
         hit_z = data.hit_pos_w[..., 2].view(num_envs, num_frames, num_rays_per_frame)
         heights = (frame_z - hit_z - offset).view(num_envs, num_frames * num_rays_per_frame)
+    # `delta_h` is an observation-centering bias, not a sensor geometry offset.
+    # It shifts torso-to-terrain heights closer to zero for neural network input.
+    heights = heights - delta_h
     scan = torch.where(data.distances < 0, torch.full_like(heights, miss_value), heights)
 
     size_x, size_y = size
@@ -155,6 +159,7 @@ def height_scan_image_noised(
     size: tuple[float, float],
     resolution: float,
     offset: float = 0.0,
+    delta_h: float = 0.0,
     miss_value: float | None = None,
     height_noise_std: float = 0.02,
     height_bias_range: tuple[float, float] = (-0.03, 0.03),
@@ -170,6 +175,7 @@ def height_scan_image_noised(
         size=size,
         resolution=resolution,
         offset=offset,
+        delta_h=delta_h,
         miss_value=miss_value,
     )
 
