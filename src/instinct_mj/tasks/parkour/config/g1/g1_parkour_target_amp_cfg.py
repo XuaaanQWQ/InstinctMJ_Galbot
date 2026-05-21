@@ -743,7 +743,7 @@ def instinct_g1_parkour_amp_env_cfg(
         ),
         "feet_flat_ori": RewardTermCfg(
             func=parkour_mdp.feet_orientation_contact,
-            weight=-0.4,
+            weight=-0.6,
             params={
                 "sensor_name": "contact_forces",
                 "asset_cfg": SceneEntityCfg(
@@ -754,7 +754,7 @@ def instinct_g1_parkour_amp_env_cfg(
         ),
         "feet_at_plane": RewardTermCfg(
             func=parkour_mdp.feet_at_plane,
-            weight=-0.1,
+            weight=-0.2,
             params={
                 "contact_sensor_name": "contact_forces",
                 "left_height_scanner_name": "left_height_scanner",
