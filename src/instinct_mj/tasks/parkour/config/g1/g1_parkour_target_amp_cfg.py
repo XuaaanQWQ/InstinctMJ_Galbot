@@ -1011,27 +1011,27 @@ def instinct_g1_parkour_amp_velocity_heightscan_cfg(
     sub_terrains = cfg.scene.terrain.terrain_generator.sub_terrains
     if "boxes" in sub_terrains:
         sub_terrains["boxes"].num_obstacles = 12
-        sub_terrains["boxes"].obstacle_height_range = (0.03, 0.25)
+        sub_terrains["boxes"].obstacle_height_range = (0.03, 0.12)
         sub_terrains["boxes"].obstacle_width_range = (0.6, 1.2)
         sub_terrains["boxes"].platform_width = 2.0
     if "dense_boxes" in sub_terrains:
         sub_terrains["dense_boxes"].num_obstacles = 60
-        sub_terrains["dense_boxes"].obstacle_height_range = (0.03, 0.20)
+        sub_terrains["dense_boxes"].obstacle_height_range = (0.03, 0.12)
         sub_terrains["dense_boxes"].obstacle_width_range = (0.25, 0.45)
         sub_terrains["dense_boxes"].platform_width = 2.0
     if "hf_pyramid_slope_inv" in sub_terrains:
-        sub_terrains["hf_pyramid_slope_inv"].slope_range = (0.0, 0.35)
+        sub_terrains["hf_pyramid_slope_inv"].slope_range = (0.0, 0.15)
         sub_terrains["hf_pyramid_slope_inv"].platform_width = 2.5
     if "pyramid_stairs" in sub_terrains:
-        sub_terrains["pyramid_stairs"].step_height_range = (0.03, 0.18)
+        sub_terrains["pyramid_stairs"].step_height_range = (0.03, 0.12)
         sub_terrains["pyramid_stairs"].platform_width = 3.0
     if "pyramid_stairs_inv" in sub_terrains:
-        sub_terrains["pyramid_stairs_inv"].step_height_range = (0.03, 0.18)
+        sub_terrains["pyramid_stairs_inv"].step_height_range = (0.03, 0.12)
         sub_terrains["pyramid_stairs_inv"].platform_width = 3.0
     if "pyramid_stairs_high" in sub_terrains:
-        sub_terrains["pyramid_stairs_high"].step_height_range = (0.04, 0.28)
+        sub_terrains["pyramid_stairs_high"].step_height_range = (0.04, 0.15)
     if "pyramid_stairs_inv_high" in sub_terrains:
-        sub_terrains["pyramid_stairs_inv_high"].step_height_range = (0.04, 0.28)
+        sub_terrains["pyramid_stairs_inv_high"].step_height_range = (0.04, 0.15)
     for sub_terrain_cfg in cfg.scene.terrain.terrain_generator.sub_terrains.values():
         if hasattr(sub_terrain_cfg, "wall_prob"):
             sub_terrain_cfg.wall_prob = [0.0, 0.0, 0.0, 0.0]
@@ -1101,31 +1101,40 @@ def instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(
 ) -> ManagerBasedRlEnvCfg:
     cfg = instinct_g1_parkour_amp_velocity_heightscan_cfg(play=play, shoe=shoe)
 
-    if not play:
-        height_scan_size = (3.0, 1.5)
-        height_scan_resolution = 0.05
-        noised_height_scan_term = ObservationTermCfg(
-            func=instinct_envs_mdp.height_scan_image_noised,
-            params={
-                "sensor_name": "height_scanner",
-                "size": height_scan_size,
-                "resolution": height_scan_resolution,
-                "delta_h": 0.7,
-                "height_noise_std": 0.02,
-                "height_bias_range": (-0.03, 0.03),
-                "drift_pixels": (1, 1),
-                "dropout_prob": 0.15,
-                "dropout_patch_size_range": (2, 6),
-            },
-            clip=(-1.5, 1.5),
-            noise=None,
-        )
-        cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(noised_height_scan_term)
+    height_scan_size = (3.0, 1.5)
+    height_scan_resolution = 0.05
+    noised_height_scan_term = ObservationTermCfg(
+        func=instinct_envs_mdp.height_scan_image_noised,
+        params={
+            "sensor_name": "height_scanner",
+            "size": height_scan_size,
+            "resolution": height_scan_resolution,
+            "delta_h": 0.7,
+            "height_noise_std": 0.02,
+            "height_bias_range": (-0.03, 0.03),
+            "drift_pixels": (1, 1),
+            "dropout_prob": 0.15,
+            "dropout_patch_size_range": (2, 6),
+        },
+        clip=(-1.5, 1.5),
+        noise=None,
+    )
+    cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(noised_height_scan_term)
 
     robot_cfg_with_backpack = copy.deepcopy(cfg.scene.entities["robot"])
     robot_cfg_with_backpack.spec_fn = _parkour_g1_backpack_with_shoe_spec
     robot_cfg_with_backpack.collisions = tuple()
     cfg.scene.entities["robot"] = robot_cfg_with_backpack
+    cfg.rewards["waist_roll_pitch_lock"] = RewardTermCfg(
+        func=parkour_mdp.joint_deviation_square,
+        weight=-2.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=("waist_roll_joint", "waist_pitch_joint"),
+            )
+        },
+    )
 
     return cfg
 
