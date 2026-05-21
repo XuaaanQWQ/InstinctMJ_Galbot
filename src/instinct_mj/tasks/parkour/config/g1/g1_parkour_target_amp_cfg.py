@@ -679,7 +679,7 @@ def instinct_g1_parkour_amp_env_cfg(
         # ---------- Regularization rewards ----------
         "volume_points_penetration": RewardTermCfg(
             func=parkour_mdp.volume_points_penetration,
-            weight=-4.0,
+            weight=-1.0,
             params={"sensor_name": "leg_volume_points"},
         ),
         "feet_air_time": RewardTermCfg(
