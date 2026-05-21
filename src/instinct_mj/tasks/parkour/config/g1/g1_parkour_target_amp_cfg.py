@@ -1139,6 +1139,30 @@ def instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(
     return cfg
 
 
+def instinct_g1_parkour_amp_velocity_clean_heightscan_backpack_cfg(
+    *,
+    play: bool = False,
+    shoe: bool = True,
+) -> ManagerBasedRlEnvCfg:
+    cfg = instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(play=play, shoe=shoe)
+
+    clean_height_scan_term = ObservationTermCfg(
+        func=instinct_envs_mdp.height_scan_image,
+        params={
+            "sensor_name": "height_scanner",
+            "size": (3.0, 1.5),
+            "resolution": 0.05,
+            "delta_h": 0.7,
+        },
+        clip=(-1.5, 1.5),
+        noise=None,
+    )
+    cfg.observations["policy"].terms["height_scan"] = copy.deepcopy(clean_height_scan_term)
+    cfg.observations["critic"].terms["height_scan"] = copy.deepcopy(clean_height_scan_term)
+
+    return cfg
+
+
 def instinct_g1_parkour_amp_target_heightscan_backpack_cfg(
     *,
     play: bool = False,

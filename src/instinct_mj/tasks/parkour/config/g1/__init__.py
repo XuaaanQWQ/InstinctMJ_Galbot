@@ -11,6 +11,7 @@ from .agents.instinct_rl_amp_cfg import G1ParkourHeightScanPPORunnerCfg, G1Parko
 from .g1_parkour_target_amp_cfg import (
     instinct_g1_parkour_amp_final_cfg,
     instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg,
+    instinct_g1_parkour_amp_velocity_clean_heightscan_backpack_cfg,
     instinct_g1_parkour_amp_velocity_heightscan_cfg,
 )
 
@@ -41,5 +42,12 @@ register_instinct_task(
     task_id="Instinct-Parkour-Velocity-Amp-Heightscan-Backpack-G1-v0",
     env_cfg_factory=lambda: instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(play=False, shoe=True),
     play_env_cfg_factory=lambda: instinct_g1_parkour_amp_velocity_heightscan_backpack_cfg(play=True, shoe=True),
+    instinct_rl_cfg_factory=G1ParkourHeightScanPPORunnerCfg,
+)
+
+register_instinct_task(
+    task_id="Instinct-Parkour-Velocity-Amp-CleanHeightscan-Backpack-G1-v0",
+    env_cfg_factory=lambda: instinct_g1_parkour_amp_velocity_clean_heightscan_backpack_cfg(play=False, shoe=True),
+    play_env_cfg_factory=lambda: instinct_g1_parkour_amp_velocity_clean_heightscan_backpack_cfg(play=True, shoe=True),
     instinct_rl_cfg_factory=G1ParkourHeightScanPPORunnerCfg,
 )
